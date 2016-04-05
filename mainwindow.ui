@@ -141,7 +141,7 @@
              <number>0</number>
             </property>
             <attribute name="headerVisible">
-             <bool>true</bool>
+             <bool>false</bool>
             </attribute>
             <attribute name="headerStretchLastSection">
              <bool>false</bool>
@@ -190,6 +190,13 @@
          <widget class="QProgressBar" name="barProcess">
           <property name="value">
            <number>24</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btStop">
+          <property name="text">
+           <string>PushButton</string>
           </property>
          </widget>
         </item>

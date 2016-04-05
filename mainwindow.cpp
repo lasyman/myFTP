@@ -3,7 +3,8 @@
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::MainWindow)
+    ui(new Ui::MainWindow),
+    m_bFtpStop(false)
 {
     ui->setupUi(this);
     init();
@@ -19,8 +20,8 @@ MainWindow::~MainWindow()
 void MainWindow::init()
 {
     QTreeWidgetItem *top = new QTreeWidgetItem(ui->twLocalFile , QStringList(QString(tr("我的电脑"))));
-    root.append(top);
-    ui->twLocalFile->insertTopLevelItems(0 , root);
+    m_twLocalroot.append(top);
+    ui->twLocalFile->insertTopLevelItems(0 , m_twLocalroot);
 }
 
 //! 初始化UI配置
@@ -29,6 +30,7 @@ void MainWindow::InitUiElements()
     ui->lblServer->setText(tr("Server Address"));
     ui->lblPort->setText(tr("Port"));
     ui->btConnect->setText(tr("Connect"));
+    ui->btStop->setText(tr("Stop"));
     ui->lblUsername->setText(tr("Username"));
     ui->lblPassword->setText(tr("Password"));
     ui->lnePassword->setEchoMode(QLineEdit::Password);
@@ -41,6 +43,7 @@ void MainWindow::InitUiElements()
     ui->textMsg->setReadOnly(true);
     ui->barProcess->setValue(0);
     ui->barProcess->setHidden(true);
+    ui->btStop->setHidden(true);
 
     m_localMenu =new QMenu(ui->twLocalFile);//定义本地路径一个右键弹出菜单
     m_remoteMenu =new QMenu(ui->twRemoteFile);//定义远程路径一个右键弹出菜单
@@ -69,6 +72,7 @@ void MainWindow::CreateActions()
 {
     connect(ui->twRemoteFile, SIGNAL(itemActivated(QTreeWidgetItem*,int)), this, SLOT(ProcessItem(QTreeWidgetItem*,int)));
     connect(ui->btConnect, SIGNAL(clicked(bool)), this, SLOT(TriggerConnectClicked()));
+    connect(ui->btStop, SIGNAL(clicked(bool)), this, SLOT(HandleFtpInterruput()));
 
     dirScan = new DirScan();
 
@@ -101,6 +105,7 @@ void MainWindow::TriggerConnectClicked()
     m_strCurrentRemotePath.clear();
     m_ftp = new QFtp(this);
 
+    connect(m_ftp, SIGNAL(commandStarted(int)), this, SLOT(FTPCommandStart(int)));
     connect(m_ftp, SIGNAL(commandFinished(int, bool)), this, SLOT(FTPCommandFinished(int,bool)));
     connect(m_ftp, SIGNAL(listInfo(QUrlInfo)), this, SLOT(AddToList(QUrlInfo)));
     connect(m_ftp, SIGNAL(dataTransferProgress(qint64,qint64)), this, SLOT(updateDataTransferProgress(qint64,qint64)));
@@ -132,8 +137,8 @@ void MainWindow::AddToList(const QUrlInfo &urlInfo)
     }
 
     QTreeWidgetItem *item = new QTreeWidgetItem;
-    //item->setText(0, urlInfo.name());
-    item->setText(0, FromFTPEncoding(urlInfo.name()));
+    item->setText(0, urlInfo.name());
+    //item->setText(0, FromFTPEncoding(urlInfo.name()));
     item->setText(1, QString::number(urlInfo.size()));
     item->setText(2, urlInfo.lastModified().toString("yyyy-MM-dd  hh:mm:ss"));
     item->setText(3, urlInfo.owner());
@@ -153,10 +158,6 @@ void MainWindow::AddItem(const QString &strRootPath, const QFileInfo &ItemInfo, 
     if(ItemInfo.isDir())
     {
         QString fullPath = ItemInfo.absolutePath().replace("/" , "\\") ;
-
-    //        if(!QString::compare(strRootPath , rootPath)){
-    //           return ;
-    //        }
 
         qDebug("(fullPath: %s)\n" , fullPath.toLatin1().data());
 
@@ -259,7 +260,9 @@ void MainWindow::selectItem(QTreeWidgetItem *item, int)
     {
         QString strFileName = localFileInfo.fileName();
         m_strCurrentLocalPath = localFileInfo.absolutePath();
-        UploadFile(ToFTPEncoding(itemFullPath), m_strCurrentRemotePath+"/"+strFileName);
+        m_strCurrentLocalFile = itemFullPath;
+        m_strCurrentRemoteFile = m_strCurrentRemotePath + "/" + strFileName;
+        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, false);
     }
 
     return ;
@@ -272,65 +275,138 @@ void MainWindow::updateDataTransferProgress(qint64 nReadBytes, qint64 nTotalByte
     ui->barProcess->setValue(nReadBytes);
 }
 
+void MainWindow::FTPCommandStart(int error)
+{
+    switch (m_ftp->currentCommand())
+    {
+    case QFtp::ConnectToHost:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Connectint to Host!")));
+        break;
+    case QFtp::LoggedIn:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Logging to Host!")));
+        break;
+    case QFtp::Get:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Ready to download...!")));
+        break;
+    case QFtp::Put:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Ready to upload...!")));
+        break;
+    case QFtp::Remove:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Ready to delete!")));
+        break;
+    default:
+        break;
+    }
+}
+
 //! 处理FTP命令
 void MainWindow::FTPCommandFinished(int nCommand, bool error)
 {
+    qDebug() << m_ftp->currentCommand();
     switch (m_ftp->currentCommand())
     {
     case QFtp::ConnectToHost:
         if (error)
         {
-            ui->textMsg->setText(tr("Connect Error %1").arg(m_ftp->errorString()));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append(QString(tr("Connect Error %1"))
+                                .arg(m_ftp->errorString())));
         }
         break;
     case QFtp::LoggedIn:
         if (error)
         {
-            ui->textMsg->setText(tr("Login Error %1").arg(m_ftp->errorString()));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append(QString(tr("Login Error %1"))
+                                .arg(m_ftp->errorString())));
         }
         else
         {
-            ui->textMsg->setText(tr("Login success"));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("Login success!")));
             ui->lneRemotePath->setText("/");
             m_ftp->list();
         }
         break;
     case QFtp::Get:
+        m_nFtpTransType = 1;
         if (error)
         {
-            ui->textMsg->setText(tr("Download fail %1").arg(m_ftp->errorString()));
+            if (m_bFtpStop)
+            {
+                ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                         .append("--")
+                                         .append(QObject::tr("Stop transmission!")));
+            }
+            else
+            {
+                ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                         .append("--")
+                                         .append(QObject::tr("Download fail %1")
+                                                 .arg(m_ftp->errorString())));
+            }
         }
         else
         {
-            ui->textMsg->setText(tr("Download success"));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("Download success!")));
             m_file->close();
             ui->lblSatus->setHidden(true);
             ui->barProcess->setHidden(true);
             ui->lblProcessInfo->setHidden(true);
+            ui->btStop->setHidden(true);
         }
         break;
     case QFtp::Put:
+        m_nFtpTransType = 0;
         if (error)
         {
-            ui->textMsg->setText(tr("Upload fail %1").arg(m_ftp->errorString()));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append(QString(tr("Upload Error %1"))
+                                .arg(m_ftp->errorString())));
+        }
+        else if (m_bFtpStop)
+        {
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("Stop transmission!")));
         }
         else
         {
-            ui->textMsg->setText(tr("Upload success"));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("Upload success!")));
             m_file->close();
             ui->lblSatus->setHidden(true);
             ui->barProcess->setHidden(true);
             ui->lblProcessInfo->setHidden(true);
+            ui->btStop->setHidden(true);
         }
         break;
     case QFtp::Remove:
         if (error)
         {
-            ui->textMsg->setText(tr("delete fail %1").arg(m_ftp->errorString()));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append(QString(tr("Delete fail %1"))
+                                .arg(m_ftp->errorString())));
         }
         else
         {
-            ui->textMsg->setText(tr("delete success"));
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("Delete success!")));
         }
         break;
     default:
@@ -372,61 +448,86 @@ void MainWindow::ProcessItem(QTreeWidgetItem *item, int)
     //! 如果是文件双击下载
     else
     {
-        DownloadFile(strName, m_strCurrentLocalPath+"\\"+FromFTPEncoding(strName));
+        m_strCurrentRemoteFile = strName;
+        m_strCurrentLocalFile = m_strCurrentLocalPath+"\\"+FromFTPEncoding(strName);
+        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, false);
     }
+}
+
+void MainWindow::HandleFtpInterruput()
+{
+    m_bFtpStop = !m_bFtpStop;
+    if (m_bFtpStop)
+    {
+        ui->btStop->setText(tr("Start"));
+        ui->lblProcessInfo->setText(tr("Stop..."));
+        m_ftp->abort();
+    }
+    else
+    {
+        ui->btStop->setText(tr("Stop"));
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Resume transmission!")));
+        switch (m_nFtpTransType)
+        {
+        case 0:
+            ui->lblProcessInfo->setText(tr("ReseUpload..."));
+            UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, true);
+            break;
+        case 1:
+            ui->lblProcessInfo->setText(tr("ReseDownload..."));
+            DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, true);
+            break;
+        default:
+            break;
+        }
+    }
+
 }
 
 void MainWindow::HandleTwLocalCustomContextMenuRequested(QPoint pos)
 {
     QTreeWidgetItem* curItem=ui->twLocalFile->itemAt(pos);  //获取当前被点击的节点
+
     const QString strFilePath = getItemFullPath(curItem);
     m_strLocalSelectFile = strFilePath;
     qDebug() << strFilePath;
-    if(curItem==NULL)return;           //这种情况是右键的位置不在treeItem的范围内，即在空白位置右击
+
+    curItem->setData(0, Qt::UserRole, QFileInfo(m_strLocalSelectFile).isDir() ? 0 : 1);
+
+    if(curItem==NULL)return;           //! 这种情况是右键的位置不在treeItem的范围内，即在空白位置右击
     QVariant var = curItem->data(0,Qt::UserRole);
 
     m_localMenu->clear();
-    m_conUpload = new QAction("ConUpload", this);
-    if(0 == var)      //data(...)返回的data已经在之前建立节点时用setdata()设置好
+    if(0 == var)      //! data(...)返回的data已经在之前建立节点时用setdata()设置好
     {
-
-       m_localMenu->addAction(m_conUpload);//往菜单内添加QAction   该action在前面用设计器定义了
-       m_localMenu->exec(QCursor::pos());//弹出右键菜单，菜单位置为光标位置
+       m_localMenu->addAction(new QAction("Open", this));
+       m_localMenu->exec(QCursor::pos());//! 弹出右键菜单，菜单位置为光标位置
     }
-    else
+    else if (1 == var)
     {
-        m_localMenu->addAction(m_conUpload);//往菜单内添加QAction   该action在前面用设计器定义了
-        m_localMenu->exec(QCursor::pos());//弹出右键菜单，菜单位置为光标位置
+        m_localMenu->addAction(new QAction("ReseUpload", this));
+        m_localMenu->addAction(new QAction("Flush", this));
+        m_localMenu->exec(QCursor::pos());//! 弹出右键菜单，菜单位置为光标位置
     }
 }
 
 void MainWindow::HandleLocalMenuTrigger(QAction *action)
 {
     QString strFileName = QFileInfo(m_strLocalSelectFile).fileName();
-    QString strRemoteFilePath = m_strCurrentRemotePath+"/"+strFileName;
-    ui->lblSatus->setHidden(false);
-    ui->barProcess->setHidden(false);
-    ui->lblProcessInfo->setHidden(false);
-    ui->lblSatus->setText(m_strLocalSelectFile + "       ==>      " + FromFTPEncoding(m_strCurrentRemotePath+"/"+strFileName));
-    ui->lblProcessInfo->setText(QObject::tr("ConUploading...").toStdString().c_str());
-    if (action == m_conUpload)
+    m_strCurrentRemoteFile = m_strCurrentRemotePath+"/"+strFileName;
+    m_strCurrentLocalFile = m_strLocalSelectFile;
+
+    if (action->iconText().compare("ReseUpload", Qt::CaseSensitive) == 0)
     {
-        qDebug() << "ConUpload";
-        m_file = new QFile(m_strLocalSelectFile);
-        if (!m_file->open(QIODevice::ReadOnly))
-        {
-           qDebug() << QString("[%1] file open fail").arg(__FUNCTION__);
-           return;
-        }
-        //! 如果服务器上文件不存在则不用断点续传
-        if (false)
-        {
-            m_ftp->put(m_file, strRemoteFilePath, QFtp::Binary);
-        }
-        else
-        {
-            m_ftp->conPut(m_file, strRemoteFilePath, QFtp::Binary);
-        }
+        qDebug() << "ReseUpload";
+        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, true);
+    }
+    else if (action->iconText().compare("Open", Qt::CaseSensitive) == 0)
+    {
+        qDebug() << "Open";
+        emit sendToDirScan(m_strLocalSelectFile);
     }
 }
 
@@ -435,25 +536,23 @@ void MainWindow::HandleTwRemoteCustomContextMenuRequested(QPoint pos)
     QTreeWidgetItem* curItem=ui->twRemoteFile->itemAt(pos);  //获取当前被点击的节点
     m_strRemoteSelectFile = m_strCurrentRemotePath + "/" + getItemFullPath(curItem);
     qDebug() << m_strRemoteSelectFile;
-    if(curItem==NULL)return;           //这种情况是右键的位置不在treeItem的范围内，即在空白位置右击
+    if (curItem==NULL)return;           //这种情况是右键的位置不在treeItem的范围内，即在空白位置右击
+
+    curItem->setData(0, Qt::UserRole, QFileInfo(m_strLocalSelectFile).isDir() ? 0 : 1);
+
     QVariant var = curItem->data(0,Qt::UserRole);
 
     m_remoteMenu->clear();
-    m_reDownload = new QAction("ReDownload", this);
-    m_flush = new QAction("Flush", this);
-    m_delete = new QAction("Delete", this);
-    if(0 == var)      //data(...)返回的data已经在之前建立节点时用setdata()设置好
+    if (0 == var)      //data(...)返回的data已经在之前建立节点时用setdata()设置好
     {
-       m_remoteMenu->addAction(m_reDownload);//往菜单内添加QAction   该action在前面用设计器定义了
-       m_remoteMenu->addAction(m_flush);
-       m_remoteMenu->addAction(m_delete);
+       m_remoteMenu->addAction(new QAction("Entry the folder", this));
        m_remoteMenu->exec(QCursor::pos());//弹出右键菜单，菜单位置为光标位置
     }
-    else
+    else if (1 == var)
     {
-        m_remoteMenu->addAction(m_reDownload);//往菜单内添加QAction   该action在前面用设计器定义了
-        m_remoteMenu->addAction(m_flush);
-        m_remoteMenu->addAction(m_delete);
+        m_remoteMenu->addAction(new QAction("ReseDownload", this));//往菜单内添加QAction   该action在前面用设计器定义了
+        m_remoteMenu->addAction(new QAction("Flush", this));
+        m_remoteMenu->addAction(new QAction("Delete", this));
         m_remoteMenu->exec(QCursor::pos());//弹出右键菜单，菜单位置为光标位置
     }
 }
@@ -461,73 +560,81 @@ void MainWindow::HandleTwRemoteCustomContextMenuRequested(QPoint pos)
 void MainWindow::HandleRemoteMenuTrigger(QAction *action)
 {
 
-    if (action == m_flush)
+    if (action->iconText().compare("Flush", Qt::CaseSensitive) == 0)
     {
         m_mapDirctory.clear();
         ui->twRemoteFile->clear();
         m_ftp->list(m_strCurrentRemotePath);
     }
-    else if (action == m_delete)
+    else if (action->iconText().compare("Delete", Qt::CaseSensitive) == 0)
     {
         m_ftp->remove(m_strRemoteSelectFile);
         m_mapDirctory.clear();
         ui->twRemoteFile->clear();
         m_ftp->list(m_strCurrentRemotePath);
     }
-    else if (action == m_reDownload)
+    else if (action->iconText().compare("ReseDownload", Qt::CaseSensitive) == 0)
     {
-        QString strLocalFile = m_strCurrentLocalPath + "\\" +QFileInfo(m_strRemoteSelectFile).fileName();
-        m_file = new QFile(strLocalFile);
-        if (m_file->open(QIODevice::WriteOnly))
-        {
-            ui->lblSatus->setHidden(false);
-            ui->barProcess->setHidden(false);
-            ui->lblProcessInfo->setHidden(false);
-            ui->lblSatus->setText(FromFTPEncoding(m_strRemoteSelectFile) + "      ==>      " + strLocalFile);
-            ui->lblProcessInfo->setText(QObject::tr("ConDownloading...").toStdString().c_str());
-            m_ftp->get(m_strRemoteSelectFile, m_file, QFtp::Binary);
-        }
+        m_strCurrentLocalFile = m_strCurrentLocalPath + "\\" +QFileInfo(m_strRemoteSelectFile).fileName();
+        m_strCurrentRemoteFile = ToFTPEncoding(m_strRemoteSelectFile);
+        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, true);
     }
 
     return;
 }
 
 //! 下载文件
-void MainWindow::DownloadFile(QString strRemoteFile, QString strLocalFile)
+void MainWindow::DownloadFile(QString strRemoteFile, QString strLocalFile, bool isRese)
 {
     ui->lblSatus->setHidden(false);
     ui->barProcess->setHidden(false);
+    ui->btStop->setHidden(false);
     ui->lblProcessInfo->setHidden(false);
     ui->lblSatus->setText(FromFTPEncoding(strRemoteFile) + "      ==>      " + strLocalFile);
-    ui->lblProcessInfo->setText(QObject::tr("Downloading...").toStdString().c_str());
+
     m_file = new QFile(strLocalFile);
     if (!m_file->open(QIODevice::ReadWrite))
     {
         qDebug() << "open fail";
     }
+    if (isRese)
+    {
+        ui->lblProcessInfo->setText(QObject::tr("ReseDownloading...").toStdString().c_str());
+        m_ftp->rawCommand(tr("REST %1").arg(m_file->size()));
+        m_ftp->m_isConLoad = true;
+        m_ftp->get(strRemoteFile, m_file, QFtp::Binary);
+    }
     else
     {
+        ui->lblProcessInfo->setText(QObject::tr("Downloading...").toStdString().c_str());
         m_ftp->get(strRemoteFile, m_file, QFtp::Binary);
     }
 }
 
 //! 上传
-void MainWindow::UploadFile(QString strLocalFile, QString strRemoteFile)
+//! isRese 续传
+void MainWindow::UploadFile(QString strLocalFile, QString strRemoteFile, bool isRese)
 {
     ui->lblSatus->setHidden(false);
     ui->barProcess->setHidden(false);
+    ui->btStop->setHidden(false);
     ui->lblProcessInfo->setHidden(false);
     ui->lblSatus->setText(strLocalFile + "       ==>      " + FromFTPEncoding(strRemoteFile));
-    ui->lblProcessInfo->setText(QObject::tr("Uploading...").toStdString().c_str());
     m_file = new QFile(strLocalFile);
     if (!m_file->open(QIODevice::ReadWrite))
     {
         qDebug() << "open fail";
+        return;
+    }
+    if (isRese)
+    {
+        ui->lblProcessInfo->setText(QObject::tr("ReseUploading...").toStdString().c_str());
+        m_ftp->conPut(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
     }
     else
     {
+        ui->lblProcessInfo->setText(QObject::tr("Uploading...").toStdString().c_str());
         m_ftp->put(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
-        //m_ftp->conPut(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
     }
 }
 
@@ -561,6 +668,10 @@ QString MainWindow::ToFTPEncoding(const QString &strOutput)
 
 QString MainWindow::getItemFullPath(QTreeWidgetItem *item)
 {
+    if (item == NULL)
+    {
+        return "";
+    }
     QString itemFullPath = item->text(0);
 
     while(item->parent() != NULL && QString::compare(item->parent()->text(0) , QString(tr("我的电脑")))){
