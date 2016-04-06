@@ -66,7 +66,7 @@ private slots:
     void AddItem(const QString &strRootPath, const QFileInfo &ItemInfo , const int k );
     void selectItem(QTreeWidgetItem * item, int);
     void updateDataTransferProgress(qint64 nReadBytes, qint64 nTotalBytes);
-    void FTPCommandStart(int error);
+    void FTPCommandStart(int);
     void FTPCommandFinished(int nCommand, bool error);
     void ProcessItem(QTreeWidgetItem *item, int);
     void HandleFtpInterruput();

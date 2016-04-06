@@ -140,15 +140,9 @@
             <property name="indentation">
              <number>0</number>
             </property>
-            <attribute name="headerVisible">
-             <bool>false</bool>
-            </attribute>
-            <attribute name="headerStretchLastSection">
-             <bool>false</bool>
-            </attribute>
             <column>
              <property name="text">
-              <string>1</string>
+              <string notr="true">1</string>
              </property>
             </column>
            </widget>

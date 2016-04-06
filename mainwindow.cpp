@@ -41,6 +41,7 @@ void MainWindow::InitUiElements()
     ui->lblSatus->setHidden(true);
     ui->lblProcessInfo->setHidden(true);
     ui->textMsg->setReadOnly(true);
+    ui->lneRemotePath->setReadOnly(true);
     ui->barProcess->setValue(0);
     ui->barProcess->setHidden(true);
     ui->btStop->setHidden(true);
@@ -91,6 +92,7 @@ void MainWindow::CreateActions()
         qDebug("--error:3--\n");
     }
 
+    //! 右键菜单
     connect(ui->twRemoteFile, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(HandleTwRemoteCustomContextMenuRequested(QPoint)));
     connect(ui->twLocalFile, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(HandleTwLocalCustomContextMenuRequested(QPoint)));
 
@@ -245,6 +247,7 @@ void MainWindow::AddItem(const QString &strRootPath, const QFileInfo &ItemInfo, 
     return ;
 }
 
+//! 本地列表
 void MainWindow::selectItem(QTreeWidgetItem *item, int)
 {
     const QString itemFullPath = getItemFullPath(item);
@@ -275,19 +278,19 @@ void MainWindow::updateDataTransferProgress(qint64 nReadBytes, qint64 nTotalByte
     ui->barProcess->setValue(nReadBytes);
 }
 
-void MainWindow::FTPCommandStart(int error)
+void MainWindow::FTPCommandStart(int)
 {
     switch (m_ftp->currentCommand())
     {
     case QFtp::ConnectToHost:
         ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                  .append("--")
-                                 .append(QObject::tr("Connectint to Host!")));
+                                 .append(QObject::tr("Connecting to Host!")));
         break;
     case QFtp::LoggedIn:
         ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                  .append("--")
-                                 .append(QObject::tr("Logging to Host!")));
+                                 .append(QObject::tr("Logining!")));
         break;
     case QFtp::Get:
         ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
@@ -304,6 +307,12 @@ void MainWindow::FTPCommandStart(int error)
                                  .append("--")
                                  .append(QObject::tr("Ready to delete!")));
         break;
+    case QFtp::List:
+        ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                 .append("--")
+                                 .append(QObject::tr("Read %1")
+                                 .arg(m_strCurrentRemotePath)));
+        break;
     default:
         break;
     }
@@ -312,6 +321,7 @@ void MainWindow::FTPCommandStart(int error)
 //! 处理FTP命令
 void MainWindow::FTPCommandFinished(int nCommand, bool error)
 {
+    Q_UNUSED(nCommand);
     qDebug() << m_ftp->currentCommand();
     switch (m_ftp->currentCommand())
     {
@@ -336,6 +346,7 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
                                      .append("--")
                                      .append(QObject::tr("Login success!")));
             ui->lneRemotePath->setText("/");
+            m_strCurrentRemotePath = "/";
             m_ftp->list();
         }
         break;
@@ -382,6 +393,7 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                      .append("--")
                                      .append(QObject::tr("Stop transmission!")));
+            m_file->close();
         }
         else
         {
@@ -409,11 +421,27 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
                                      .append(QObject::tr("Delete success!")));
         }
         break;
+    case QFtp::List:
+        if (error)
+        {
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append(QString(tr("List %1 fail %1"))
+                                .arg(m_strCurrentRemotePath)
+                                .arg(m_ftp->errorString())));
+        }
+        else
+        {
+            ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                     .append("--")
+                                     .append(QObject::tr("List %1 success!")
+                                     .arg(m_strCurrentRemotePath)));
+        }
     default:
         break;
     }
 }
 
+//! 远端列表
 void MainWindow::ProcessItem(QTreeWidgetItem *item, int)
 {
     //! 打开一个目录
@@ -454,6 +482,7 @@ void MainWindow::ProcessItem(QTreeWidgetItem *item, int)
     }
 }
 
+//! FTP中断传输
 void MainWindow::HandleFtpInterruput()
 {
     m_bFtpStop = !m_bFtpStop;
@@ -666,6 +695,7 @@ QString MainWindow::ToFTPEncoding(const QString &strOutput)
     }
 }
 
+//! 获取本地列表完整路径
 QString MainWindow::getItemFullPath(QTreeWidgetItem *item)
 {
     if (item == NULL)
