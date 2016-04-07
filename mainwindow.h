@@ -34,8 +34,8 @@ private:
     Ui::MainWindow *ui;
     void init();
     void InitUiElements();
-    void DownloadFile(QString strRemoteFile, QString strLocalFile, bool isRese);
-    void UploadFile(QString strLocalFile, QString strRemoteFile, bool isRese);
+    void DownloadFile(QString strRemoteFile, QString strLocalFile);
+    void UploadFile(QString strLocalFile, QString strRemoteFile);
     QString FromFTPEncoding(const QString &strInput);
     QString ToFTPEncoding(const QString &strOutput);
 

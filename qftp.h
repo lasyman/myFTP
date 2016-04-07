@@ -156,9 +156,6 @@ private:
     Q_PRIVATE_SLOT(d, void _q_piError(int, const QString&))
     Q_PRIVATE_SLOT(d, void _q_piConnectState(int))
     Q_PRIVATE_SLOT(d, void _q_piFtpReply(int, const QString&))
-
-public:
-    bool m_isConLoad;                         //zhj
 };
 
 QT_END_HEADER

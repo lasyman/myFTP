@@ -139,8 +139,8 @@ void MainWindow::AddToList(const QUrlInfo &urlInfo)
     }
 
     QTreeWidgetItem *item = new QTreeWidgetItem;
-    item->setText(0, urlInfo.name());
-    //item->setText(0, FromFTPEncoding(urlInfo.name()));
+    //item->setText(0, urlInfo.name());
+    item->setText(0, FromFTPEncoding(urlInfo.name()));
     item->setText(1, QString::number(urlInfo.size()));
     item->setText(2, urlInfo.lastModified().toString("yyyy-MM-dd  hh:mm:ss"));
     item->setText(3, urlInfo.owner());
@@ -265,7 +265,7 @@ void MainWindow::selectItem(QTreeWidgetItem *item, int)
         m_strCurrentLocalPath = localFileInfo.absolutePath();
         m_strCurrentLocalFile = itemFullPath;
         m_strCurrentRemoteFile = m_strCurrentRemotePath + "/" + strFileName;
-        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, false);
+        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile);
     }
 
     return ;
@@ -373,18 +373,19 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                      .append("--")
                                      .append(QObject::tr("Download success!")));
-            m_file->close();
             ui->lblSatus->setHidden(true);
             ui->barProcess->setHidden(true);
             ui->lblProcessInfo->setHidden(true);
             ui->btStop->setHidden(true);
         }
+        m_file->close();
         break;
     case QFtp::Put:
         m_nFtpTransType = 0;
         if (error)
         {
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append("--")
                                 .append(QString(tr("Upload Error %1"))
                                 .arg(m_ftp->errorString())));
         }
@@ -393,24 +394,24 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                      .append("--")
                                      .append(QObject::tr("Stop transmission!")));
-            m_file->close();
         }
         else
         {
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
                                      .append("--")
                                      .append(QObject::tr("Upload success!")));
-            m_file->close();
             ui->lblSatus->setHidden(true);
             ui->barProcess->setHidden(true);
             ui->lblProcessInfo->setHidden(true);
             ui->btStop->setHidden(true);
         }
+        m_file->close();
         break;
     case QFtp::Remove:
         if (error)
         {
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append("--")
                                 .append(QString(tr("Delete fail %1"))
                                 .arg(m_ftp->errorString())));
         }
@@ -425,6 +426,7 @@ void MainWindow::FTPCommandFinished(int nCommand, bool error)
         if (error)
         {
             ui->textMsg->append(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                                .append("--")
                                 .append(QString(tr("List %1 fail %1"))
                                 .arg(m_strCurrentRemotePath)
                                 .arg(m_ftp->errorString())));
@@ -478,7 +480,7 @@ void MainWindow::ProcessItem(QTreeWidgetItem *item, int)
     {
         m_strCurrentRemoteFile = strName;
         m_strCurrentLocalFile = m_strCurrentLocalPath+"\\"+FromFTPEncoding(strName);
-        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, false);
+        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile);
     }
 }
 
@@ -502,11 +504,11 @@ void MainWindow::HandleFtpInterruput()
         {
         case 0:
             ui->lblProcessInfo->setText(tr("ReseUpload..."));
-            UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, true);
+            UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile);
             break;
         case 1:
             ui->lblProcessInfo->setText(tr("ReseDownload..."));
-            DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, true);
+            DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile);
             break;
         default:
             break;
@@ -551,7 +553,8 @@ void MainWindow::HandleLocalMenuTrigger(QAction *action)
     if (action->iconText().compare("ReseUpload", Qt::CaseSensitive) == 0)
     {
         qDebug() << "ReseUpload";
-        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile, true);
+
+        UploadFile(ToFTPEncoding(m_strCurrentLocalFile), m_strCurrentRemoteFile);
     }
     else if (action->iconText().compare("Open", Qt::CaseSensitive) == 0)
     {
@@ -606,14 +609,14 @@ void MainWindow::HandleRemoteMenuTrigger(QAction *action)
     {
         m_strCurrentLocalFile = m_strCurrentLocalPath + "\\" +QFileInfo(m_strRemoteSelectFile).fileName();
         m_strCurrentRemoteFile = ToFTPEncoding(m_strRemoteSelectFile);
-        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile, true);
+        DownloadFile(m_strCurrentRemoteFile, m_strCurrentLocalFile);
     }
 
     return;
 }
 
 //! 下载文件
-void MainWindow::DownloadFile(QString strRemoteFile, QString strLocalFile, bool isRese)
+void MainWindow::DownloadFile(QString strRemoteFile, QString strLocalFile)
 {
     ui->lblSatus->setHidden(false);
     ui->barProcess->setHidden(false);
@@ -622,27 +625,17 @@ void MainWindow::DownloadFile(QString strRemoteFile, QString strLocalFile, bool 
     ui->lblSatus->setText(FromFTPEncoding(strRemoteFile) + "      ==>      " + strLocalFile);
 
     m_file = new QFile(strLocalFile);
-    if (!m_file->open(QIODevice::ReadWrite))
+    if (!m_file->open(QIODevice::Append))
     {
         qDebug() << "open fail";
     }
-    if (isRese)
-    {
-        ui->lblProcessInfo->setText(QObject::tr("ReseDownloading...").toStdString().c_str());
-        m_ftp->rawCommand(tr("REST %1").arg(m_file->size()));
-        m_ftp->m_isConLoad = true;
-        m_ftp->get(strRemoteFile, m_file, QFtp::Binary);
-    }
-    else
-    {
-        ui->lblProcessInfo->setText(QObject::tr("Downloading...").toStdString().c_str());
-        m_ftp->get(strRemoteFile, m_file, QFtp::Binary);
-    }
+    ui->lblProcessInfo->setText(QObject::tr("Downloading...").toStdString().c_str());
+    m_ftp->get(strRemoteFile, m_file, QFtp::Binary);
 }
 
 //! 上传
 //! isRese 续传
-void MainWindow::UploadFile(QString strLocalFile, QString strRemoteFile, bool isRese)
+void MainWindow::UploadFile(QString strLocalFile, QString strRemoteFile)
 {
     ui->lblSatus->setHidden(false);
     ui->barProcess->setHidden(false);
@@ -655,16 +648,9 @@ void MainWindow::UploadFile(QString strLocalFile, QString strRemoteFile, bool is
         qDebug() << "open fail";
         return;
     }
-    if (isRese)
-    {
-        ui->lblProcessInfo->setText(QObject::tr("ReseUploading...").toStdString().c_str());
-        m_ftp->conPut(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
-    }
-    else
-    {
-        ui->lblProcessInfo->setText(QObject::tr("Uploading...").toStdString().c_str());
-        m_ftp->put(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
-    }
+
+    ui->lblProcessInfo->setText(QObject::tr("Uploading...").toStdString().c_str());
+    m_ftp->put(m_file, ToFTPEncoding(strRemoteFile),QFtp::Binary);
 }
 
 //! FTP编码转本地编码

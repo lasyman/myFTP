@@ -947,6 +947,10 @@ void QFtpPI::readyRead()
     while (commandSocket.canReadLine()) {
         // read line with respect to line continuation
         QString line = QString::fromLatin1(commandSocket.readLine());
+        if (line.split(" ").at(0) == "550")
+        {
+            line = QString("213 0");
+        }
         if (replyText.isEmpty()) {
             if (line.length() < 3) {
                 // protocol error
@@ -1461,8 +1465,6 @@ QFtp::QFtp(QObject *parent)
 {
     d->errorString = tr("Unknown error");
 
-    m_isConLoad = false;               //zhj
-
     connect(&d->pi, SIGNAL(connectState(int)),
             SLOT(_q_piConnectState(int)));
     connect(&d->pi, SIGNAL(finished(QString)),
@@ -1871,15 +1873,13 @@ int QFtp::get(const QString &file, QIODevice *dev, TransferType type)
         cmds << QLatin1String("TYPE I\r\n");
     else
         cmds << QLatin1String("TYPE A\r\n");
+    cmds << QLatin1String("REST ") + QString::number(dev->size()) + QLatin1String("\r\n");//!++ all file use bp download
     cmds << QLatin1String("SIZE ") + file + QLatin1String("\r\n");
     cmds << QLatin1String(d->transferMode == Passive ? "PASV\r\n" : "PORT\r\n");
     cmds << QLatin1String("RETR ") + file + QLatin1String("\r\n");
 
-    if(m_isConLoad)
-    {
-        d->pi.isConDownLoad = true;
-        m_isConLoad = false;
-    }
+    qDebug() << cmds;
+    d->pi.isConDownLoad = true;
 
     return d->addCommand(new QFtpCommand(Get, cmds, dev));
 }
@@ -1950,30 +1950,13 @@ int QFtp::put(QIODevice *dev, const QString &file, TransferType type)
         cmds << QLatin1String("TYPE I\r\n");
     else
         cmds << QLatin1String("TYPE A\r\n");
+    cmds << QLatin1String("SIZE ") + file + QLatin1String("\r\n");//! +
     cmds << QLatin1String(d->transferMode == Passive ? "PASV\r\n" : "PORT\r\n");
     if (!dev->isSequential())
         cmds << QLatin1String("ALLO ") + QString::number(dev->size()) + QLatin1String("\r\n");
-    cmds << QLatin1String("STOR ") + file + QLatin1String("\r\n");
+    //! cmds << QLatin1String("STOR ") + file + QLatin1String("\r\n");
+    cmds<<  QLatin1String("APPE ") + file + QLatin1String("\r\n");//! +
     qDebug() << cmds;
-    return d->addCommand(new QFtpCommand(Put, cmds, dev));
-}
-
-/*!
- *
- */
-int QFtp::conPut(QIODevice *dev, const QString &file, TransferType type)
-{
-    QStringList cmds;
-    if (type == Binary)
-        cmds << QLatin1String("TYPE I\r\n");
-    else
-        cmds << QLatin1String("TYPE A\r\n");
-    cmds << QLatin1String("SIZE ") + file + QLatin1String("\r\n");
-    cmds << QLatin1String(d->transferMode == Passive ? "PASV\r\n" : "PORT\r\n");
-    if (!dev->isSequential())
-        cmds << QLatin1String("ALLO ") + QString::number(dev->size()) + QLatin1String("\r\n");
-    cmds<<  QLatin1String("APPE ") + file + QLatin1String("\r\n");
-
 
     d->pi.isConUpLoad = true;
 
