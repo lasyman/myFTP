@@ -116,7 +116,6 @@ public:
     int rename(const QString &oldname, const QString &newname);
 
     int rawCommand(const QString &command);
-    int rest(const long long x);
 
     qint64 bytesAvailable() const;
     qint64 read(char *data, qint64 maxlen);

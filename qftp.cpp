@@ -143,7 +143,6 @@ public:
     bool is_ba;
 
     QByteArray bytesFromSocket;
-	bool isConLoad;                             //zhj
 };
 
 /**********************************************************************
@@ -176,8 +175,7 @@ public:
 
     QFtpDTP dtp; // the PI has a DTP which is not the design of RFC 959, but it
                  // makes the design simpler this way
-    bool isConUpLoad;                               //zhj
-    bool isConDownLoad;
+    quint16 opType;
 signals:
     void connectState(int);
     void finished(const QString&);
@@ -292,7 +290,6 @@ QFtpDTP::QFtpDTP(QFtpPI *p, QObject *parent) :
     pi(p),
     callWriteData(false)
 {
-    isConLoad = false;                          //zhj
     clearData();
     listener.setObjectName(QLatin1String("QFtpDTP active state server"));
     connect(&listener, SIGNAL(newConnection()), SLOT(setupSocket()));
@@ -657,8 +654,7 @@ bool QFtpDTP::parseDir(const QByteArray &buffer, const QString &userName, QUrlIn
 
 void QFtpDTP::socketConnected()
 {
-    if(!isConLoad)
-        bytesDone = 0;
+//    bytesDone = 0;
 #if defined(QFTPDTP_DEBUG)
     qDebug("QFtpDTP::connectState(CsConnected)");
 #endif
@@ -812,8 +808,6 @@ QFtpPI::QFtpPI(QObject *parent) :
     waitForDtpToConnect(false),
     waitForDtpToClose(false)
 {
-    isConUpLoad = false;                              //zhj
-    isConDownLoad = false;
     m_rmtFileSize = 0;                              //zhj
 
     commandSocket.setObjectName(QLatin1String("QFtpPI_socket"));
@@ -1126,26 +1120,16 @@ bool QFtpPI::processReply()
         // 213 File status.
         if (currentCmd.startsWith(QLatin1String("SIZE ")))
         {
-            if(isConUpLoad)                                     //zhj
+            if (opType == QFtp::Put)
             {
                 m_rmtFileSize = replyText.toLongLong();
                 dtp.setBytesDone(m_rmtFileSize);
                 dtp.data.dev->seek(m_rmtFileSize);
-                dtp.isConLoad = true;
-                isConUpLoad = false;
             }
-            else
+            else if (opType == QFtp::Get)
             {
                 dtp.setBytesTotal(replyText.simplified().toLongLong());
-
-                if(isConDownLoad)                               //zhj
-                {
-                    dtp.setBytesDone(dtp.data.dev->size());
-                    isConDownLoad = false;
-                    dtp.isConLoad = true;
-                }
-                else
-                    dtp.isConLoad = false;
+                dtp.setBytesDone(dtp.data.dev->size());
             }
         }
     } else if (replyCode[0]==1 && currentCmd.startsWith(QLatin1String("STOR "))) {
@@ -1879,16 +1863,9 @@ int QFtp::get(const QString &file, QIODevice *dev, TransferType type)
     cmds << QLatin1String("RETR ") + file + QLatin1String("\r\n");
 
     qDebug() << cmds;
-    d->pi.isConDownLoad = true;
+    d->pi.opType = Get;
 
     return d->addCommand(new QFtpCommand(Get, cmds, dev));
-}
-
-int QFtp::rest(const long long x)
-{
-    QStringList cmds;
-     cmds << tr("REST %1\r\n").arg(x);
-    return d->addCommand(new QFtpCommand(RawCommand, cmds));
 }
 
 /*!
@@ -1950,15 +1927,15 @@ int QFtp::put(QIODevice *dev, const QString &file, TransferType type)
         cmds << QLatin1String("TYPE I\r\n");
     else
         cmds << QLatin1String("TYPE A\r\n");
-    cmds << QLatin1String("SIZE ") + file + QLatin1String("\r\n");//! +
+    cmds << QLatin1String("SIZE ") + file + QLatin1String("\r\n");//!+++
     cmds << QLatin1String(d->transferMode == Passive ? "PASV\r\n" : "PORT\r\n");
     if (!dev->isSequential())
         cmds << QLatin1String("ALLO ") + QString::number(dev->size()) + QLatin1String("\r\n");
     //! cmds << QLatin1String("STOR ") + file + QLatin1String("\r\n");
-    cmds<<  QLatin1String("APPE ") + file + QLatin1String("\r\n");//! +
-    qDebug() << cmds;
+    cmds<<  QLatin1String("APPE ") + file + QLatin1String("\r\n");//!+++
 
-    d->pi.isConUpLoad = true;
+    qDebug() << cmds;
+    d->pi.opType = Put;
 
     return d->addCommand(new QFtpCommand(Put, cmds, dev));
 }
