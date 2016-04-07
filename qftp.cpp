@@ -214,7 +214,6 @@ private:
 
     QTcpSocket commandSocket;
     QString replyText;
-    qint64 m_rmtFileSize;                                //zhj
     char replyCode[3];
     State state;
     AbortState abortState;
@@ -808,7 +807,6 @@ QFtpPI::QFtpPI(QObject *parent) :
     waitForDtpToConnect(false),
     waitForDtpToClose(false)
 {
-    m_rmtFileSize = 0;                              //zhj
 
     commandSocket.setObjectName(QLatin1String("QFtpPI_socket"));
     connect(&commandSocket, SIGNAL(hostFound()),
@@ -1122,9 +1120,9 @@ bool QFtpPI::processReply()
         {
             if (opType == QFtp::Put)
             {
-                m_rmtFileSize = replyText.toLongLong();
-                dtp.setBytesDone(m_rmtFileSize);
-                dtp.data.dev->seek(m_rmtFileSize);
+                qint64 nUploadedSize = replyText.toLongLong();
+                dtp.setBytesDone(nUploadedSize);
+                dtp.data.dev->seek(nUploadedSize);
             }
             else if (opType == QFtp::Get)
             {
@@ -1132,15 +1130,12 @@ bool QFtpPI::processReply()
                 dtp.setBytesDone(dtp.data.dev->size());
             }
         }
-    } else if (replyCode[0]==1 && currentCmd.startsWith(QLatin1String("STOR "))) {
+    } else if (replyCode[0]==1 && (currentCmd.startsWith(QLatin1String("STOR "))
+               || currentCmd.startsWith(QLatin1String("APPE "))))
+    {
         dtp.waitForConnection();
         dtp.writeData();
     }
-
-    else if (replyCode[0]==1 && currentCmd.startsWith(QLatin1String("APPE "))) {
-            dtp.waitForConnection();
-            dtp.writeData();
-        }
 
     // react on new state
     switch (state) {
